@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Salary Quest — Slay the dragon. Get the gold.</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- HUD -->
+    <header id="hud" class="hidden">
+      <div class="hud-left">
+        <span class="hud-title">⚔️ Salary Quest</span>
+      </div>
+      <div class="hud-right">
+        <span class="hud-stat" id="hud-offer" title="Current offer on the table">💰 <b>—</b></span>
+        <span class="hud-stat" id="hud-rapport" title="Rapport with the Guildmaster">❤️ <b>—</b></span>
+        <span class="hud-stat" id="hud-inventory" title="Your inventory"></span>
+      </div>
+    </header>
+
+    <!-- Scene container -->
+    <main id="stage"></main>
+
+    <footer id="foot">
+      <span>Salary Quest — a negotiation trainer in a trench coat.</span>
+    </footer>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
