@@ -14,6 +14,9 @@ let S = null;
 
 function newState() {
   return {
+    quest: 1,             // 1 = The Dragon's Hoard, 2 = The Raise
+    ledger: false,        // Quest II: kept a Deeds Ledger (brag document)
+    timing: null,         // Quest II: 'good' | 'bad'
     offer: 0,             // current base offer on the table
     initialOffer: 0,      // first number the Guildmaster put down
     rapport: 3,           // 0–5 hearts with the Guildmaster
@@ -84,6 +87,7 @@ function updateHud() {
   if (S && S.knowledge) badges.push('🔮 Market Lore');
   if (S && !S.knowledge && S.partialKnowledge) badges.push('🕯️ Partial Lore');
   if (S && S.scroll) badges.push('📜 Escape Scroll');
+  if (S && S.ledger) badges.push('📖 Deeds Ledger');
   invEl.innerHTML = badges.map((b) => `<span class="inv-badge">${b}</span>`).join('');
 }
 
@@ -91,27 +95,56 @@ function lesson(text) {
   if (!S.lessons.includes(text)) S.lessons.push(text);
 }
 
+/* ── Best-score persistence ── */
+
+function loadBest() {
+  try {
+    return JSON.parse(localStorage.getItem('salaryquest_best') || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+const RANK_ORDER = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+
+function saveBest(quest, rank, total) {
+  try {
+    const best = loadBest();
+    const key = 'q' + quest;
+    if (!best[key] || total > best[key].total) best[key] = { rank, total };
+    localStorage.setItem('salaryquest_best', JSON.stringify(best));
+  } catch (e) { /* private browsing etc. — scores just don't persist */ }
+}
+
 /* ── Title screen ── */
 
 function titleScreen() {
   S = null;
   hud.classList.add('hidden');
+  const best = loadBest();
+  const bestLine = (q, name) =>
+    best['q' + q]
+      ? `<div class="subtag">🏆 Best ${name}: Rank ${best['q' + q].rank} — ${best['q' + q].total.toLocaleString('en-US')} gold</div>`
+      : '';
   renderScene(
     `<div class="title-screen">
       <div class="dragon">🐉</div>
       <h1>Salary Quest</h1>
       <div class="tagline">Slay the dragon. Get the gold.</div>
       <div class="subtag">Your greatest foe is saying a number first.</div>
+      ${bestLine(1, 'Quest I')}${bestLine(2, 'Quest II')}
     </div>`,
     [
-      { label: '⚔️ Begin the Quest', primary: true, go: intro },
+      { label: '⚔️ Quest I — The Dragon\'s Hoard', hint: 'Negotiate a new job offer', primary: true, go: intro },
+      { label: '🗝️ Quest II — The Raise', hint: 'One year later: ask for more gold at the guild you already serve', go: act2Intro },
+      { label: '📚 The Sage\'s Codex', hint: 'Every lesson, in plain language — no dragons', go: codex },
       {
         label: '❓ What is this?',
         go: () =>
           renderScene(
             `<div class="title-screen"><div class="dragon">🐉</div><h1>Salary Quest</h1></div>` +
-            speech(null, `A short interactive story about negotiating a job offer. The fantasy is a skin; every encounter teaches one real, research-backed negotiation principle, and a plain-language debrief after each battle tells you what just happened and why it works. One run takes about five minutes. Different choices, different gold.`),
-            [{ label: '⚔️ Begin the Quest', primary: true, go: intro }]
+            speech(null, `A short interactive story about negotiating your compensation. The fantasy is a skin; every encounter teaches one real, research-backed negotiation principle, and a plain-language debrief after each battle tells you what just happened and why it works. Each quest takes about five minutes. Different choices, different gold.`),
+            [{ label: '🏰 Back to the title screen', primary: true, go: titleScreen }]
           ),
       },
     ]
@@ -578,6 +611,7 @@ function victory() {
   else if (total >= 115000) { rank = 'B'; rankNote = 'A solid campaign. Gold was won; more waited.'; }
   else if (total >= 100000) { rank = 'C'; rankNote = 'You survived the dragon. The dragon also survived you.'; }
   else { rank = 'D'; rankNote = 'The dragon is still chuckling. Train, and return.'; }
+  saveBest(1, rank, total);
 
   const perkRows = S.perks
     .map((p) => `<tr><td>${p.icon} ${p.name} <span style="color:var(--text-dim)">(${p.note})</span></td><td>+${p.value.toLocaleString('en-US')}</td></tr>`)
@@ -607,9 +641,340 @@ function victory() {
         <p style="margin-top:10px">One last real number: a difference like the one on this screen, carried through raises and job changes that each build on your current base, compounds to hundreds of thousands over a career. The dragon conversation is uncomfortable for one hour. The gold is yours for decades.</p>
       </div>`,
     [
-      { label: '🔄 New quest — try a different path through the keep', primary: true, go: intro },
+      { label: '🗝️ Continue to Quest II — The Raise (one year later…)', primary: true, go: act2Intro },
+      { label: '🔄 Replay Quest I — try a different path through the keep', go: intro },
       { label: '🏰 Return to the title screen', go: titleScreen },
     ]
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   QUEST II — THE RAISE
+   One year later. Same guild, different dragon-conversation:
+   asking for more gold at the job you already have.
+══════════════════════════════════════════════════════════════ */
+
+const CURRENT_PAY = 110000;
+
+function act2Intro() {
+  S = newState();
+  S.quest = 2;
+  S.offer = CURRENT_PAY;
+  hud.classList.remove('hidden');
+  renderScene(
+    `<div class="location">Quest II — The Obsidian Ledger Guild, One Year Later</div>` +
+      speech(null, `A year in the Guild's colors. You warded the <b>Autumn Caravan</b> through the Howling Pass — two hundred thousand gold of cargo, not one crate lost. You cut the scrying-mirror budget by a third. You trained two apprentices who no longer set things on fire (much).`) +
+      speech(null, `Your pay is <b>${fmt(CURRENT_PAY)}</b> — the number you signed at, frozen in amber. Meanwhile the new hires whisper of richer contracts, for the market did not stand still while you worked. It is time for the <i>other</i> dragon conversation: the <b>raise</b>. Different lair. Same dragon. New rules.`) +
+      speech(null, `But first — a truth about this battle: it was won or lost <i>months ago</i>. Rewind to a small decision you made every week this year. Did you keep a <b>Deeds Ledger</b>?`),
+    [
+      {
+        label: '📖 You kept the Deeds Ledger — every deed, dated and counted',
+        hint: 'Five minutes a week, all year',
+        primary: true,
+        go: () => act2Ledger(true),
+      },
+      {
+        label: '🧠 You trusted your memory. Surely the Guildmaster remembers the Caravan…',
+        hint: 'She has forty adventurers and one memory',
+        go: () => act2Ledger(false),
+      },
+    ]
+  );
+}
+
+function act2Ledger(kept) {
+  S.ledger = kept;
+  let html = `<div class="location">The Deeds Ledger</div>`;
+  if (kept) {
+    html +=
+      speech(null, `You open the ledger. It is beautiful. <i>“Warded the Autumn Caravan — 200,000 gold of cargo delivered, zero losses. Cut scrying-mirror costs 30% (11,000 gold/yr). Trained two apprentices to journeyman rank. Covered the Eastern Watch for six weeks unasked.”</i> Dates. Numbers. Witnesses.`) +
+      banner('good', `📖 The <b>Deeds Ledger</b> is in your inventory. Your case will be made of stone, not smoke.`) +
+      debrief(`This is the “brag document,” and it may be the highest-return five minutes a week in your career. Managers decide raises while looking at whatever is legible at review time — and human memory is brutally recency-biased, including your own: without notes, you'll forget half your own wins from eight months ago. Keep a running doc of what you did, <b>quantified</b> (gold saved, time cut, people trained), and the raise conversation starts from evidence instead of vibes.`);
+    lesson('Keep a running brag document with dates and numbers — raise cases are decided on what\'s legible, not what happened.');
+  } else {
+    html +=
+      speech(null, `You close your eyes and inventory the year. You did… things. Good things. The caravan thing. The mirror thing? The exact numbers swim away like fish. It was all very impressive at the time, you're fairly sure.`) +
+      banner('bad', `🌫️ No ledger. Your case will be made of adjectives.`) +
+      debrief(`Without a record, a year of work compresses into “I've been doing a great job,” which is exactly what everyone says. Managers decide raises looking at whatever is legible at review time, and memory — theirs <i>and</i> yours — is brutally recency-biased. The fix is the “brag document”: five minutes a week logging what you did with numbers attached. It's not vanity; it's evidence, gathered while it's fresh.`);
+    lesson('Without a brag document, a year of wins compresses into adjectives — log your deeds with numbers while they\'re fresh.');
+  }
+  renderScene(html, [{ label: '🕰️ Now — choose your moment to strike', primary: true, go: act2Timing }]);
+}
+
+function act2Timing() {
+  renderScene(
+    `<div class="location">Choosing the Moment</div>` +
+      speech(null, `In the raise-hunt, <b>when</b> you strike matters nearly as much as how. Three moments present themselves:`),
+    [
+      {
+        label: '⚔️ One week after the Caravan triumph — before the Winter Budget Council seals the coffers',
+        hint: 'Your win is fresh; the gold is not yet allocated',
+        primary: true,
+        go: () => act2TimingResult('good'),
+      },
+      {
+        label: '🔥 Right now, mid-Goblin-Crisis, while the Guildmaster fights three fires',
+        hint: 'She\'s free! Technically. In the sense of being physically present.',
+        go: () => act2TimingResult('bad'),
+      },
+      {
+        label: '🎉 Ambush her at the Solstice Feast, goblet in hand',
+        hint: 'What could be merrier?',
+        go: () => act2TimingResult('feast'),
+      },
+    ]
+  );
+}
+
+function act2TimingResult(when) {
+  if (when === 'feast') {
+    renderScene(
+      `<div class="location">The Solstice Feast — A Tactical Retreat</div>` +
+        speech('You', `“Guildmaster! Wonderful feast! Speaking of compensation—”`, 'you') +
+        speech('Guildmaster Vexahlia', `She lowers her goblet exactly one inch. “Adventurer. It is the <i>solstice</i>. I have had four cups of honeywine and I am holding a small ceremonial sword. Whatever number you are about to say, the honeywine will say <b>no</b> for me — and neither of us will be able to cite it later. Book time with my clerk like a professional.”`) +
+        banner('info', `🍷 No harm done — but no gold either. Serious asks need a serious setting.`) +
+        debrief(`Hallway and party ambushes fail for a structural reason: a raise requires your manager to go <i>do something</i> — check budgets, talk to their boss, file paperwork — and an ambushed manager can only say the safe word, which is “no” (or worse, a vague “we'll see” that becomes policy). Book a real meeting, say what it's about, and give them the chance to prepare too. You want them able to say yes.`),
+      [
+        { label: '⚔️ After the Caravan triumph, before the Budget Council', primary: true, go: () => act2TimingResult('good') },
+        { label: '🔥 Mid-Goblin-Crisis it is', go: () => act2TimingResult('bad') },
+      ]
+    );
+    lesson('Never ambush — book a real meeting with an agenda, so the answer can be something other than the safe “no.”');
+    return;
+  }
+
+  S.timing = when;
+  let html = `<div class="location">The Moment: ${when === 'good' ? 'After the Triumph' : 'Mid-Crisis'}</div>`;
+  if (when === 'good') {
+    html +=
+      speech(null, `One week after the Caravan's triumphant return, with the ballads still being sung, you book an audience — <i>before</i> the Winter Budget Council meets to seal the year's coffers. The Guildmaster receives you in a good mood, your victory still glowing in her ledger like a hot coal.`) +
+      banner('good', `⚔️ Timing struck true: fresh win, unallocated gold, undivided attention.`) +
+      debrief(`Raises come out of budget cycles, and the money is divided up <b>before</b> review season — by the time formal reviews happen, most of the pie is already sliced. The strongest timing stacks three things: a recent, visible win (recency bias working <i>for</i> you), a moment before budgets lock, and a manager with attention to spare. Ask your manager when comp planning actually happens; the answer is usually “earlier than you think.”`);
+    lesson('Ask before budgets lock and soon after a visible win — by review season, the pie is already sliced.');
+  } else {
+    S.rapport = Math.max(0, S.rapport - 1);
+    html +=
+      speech(null, `You catch the Guildmaster between a goblin incursion report and a burning supply depot. She listens with one eye on the window, through which something is audibly exploding.`) +
+      speech('Guildmaster Vexahlia', `“Is this about the depot? No? It's about <i>gold</i>? Adventurer, I say this with respect: read the room. The room is on fire.”`) +
+      banner('bad', `🔥 Terrible timing. She'll hear you out — with half an ear and no patience. Your ask will land at half strength.`) +
+      debrief(`The same case, made at the wrong moment, gets a fraction of the result — a distracted, stressed decision-maker defaults to “not now,” and “not now” has a way of hardening into “no.” Timing is a lever you fully control: after a win, before budgets lock, in a calm scheduled meeting. If the room is on fire, help put out the fire and ask next week; the contrast works in your favor.`);
+    lesson('A strong case at a bad moment lands at half strength — timing is the one lever you fully control.');
+  }
+  renderScene(html, [{ label: '🐉 Make the ask', primary: true, go: act2Ask }]);
+}
+
+function act2Ask() {
+  renderScene(
+    `<div class="location">The Audience — Framing the Ask</div>` +
+      speech('Guildmaster Vexahlia', `The reading glasses come out. “So. You wish to discuss your gold.” The quill hovers. “Make your case, Arcane Engineer.”`) +
+      speech(null, `Three framings present themselves. Choose the shape of your attack:`),
+    [
+      {
+        label: `💎 The Value Frame — deeds, numbers, market. “Here is what I've delivered, and here is what this expanded work commands.”`,
+        hint: S.ledger ? 'Your Deeds Ledger makes this devastating' : 'Without the ledger, this will be… approximate',
+        primary: true,
+        go: () => act2AskResult('value'),
+      },
+      {
+        label: `🥺 The Need Frame — “Rents in Emberhold have risen, and my tower has a leak…”`,
+        hint: 'Appeal to the dragon\'s sympathy',
+        go: () => act2AskResult('need'),
+      },
+      {
+        label: `🃏 The Phantom Scroll — “The Silverquill Guild still writes to me, you know.”`,
+        hint: 'Imply a rival offer you do not actually hold',
+        go: () => act2AskResult('bluff'),
+      },
+    ]
+  );
+}
+
+function act2AskResult(frame) {
+  S.stance = frame;
+  const timingMult = S.timing === 'good' ? 1.0 : 0.5;
+  let html = `<div class="location">The Ask — ${frame === 'value' ? 'The Value Frame' : frame === 'need' ? 'The Need Frame' : 'The Phantom Scroll'}</div>`;
+  let gain = 0;
+
+  if (frame === 'value') {
+    const pct = S.ledger ? 0.12 : 0.06;
+    gain = Math.round((CURRENT_PAY * pct * timingMult) / 1000) * 1000;
+    if (S.ledger) {
+      html +=
+        speech('You', `You open the Deeds Ledger on her desk. “In one year: the Autumn Caravan warded — <b>200,000 gold</b> of cargo, zero losses. Scrying costs cut <b>30%</b> — eleven thousand a year, every year. Two apprentices raised to journeyman. My scope has grown well past the contract we signed, and the market has moved with it. I'm asking for <b>${(CURRENT_PAY + gain).toLocaleString('en-US')}</b>.”`, 'you') +
+        speech('Guildmaster Vexahlia', `She turns the ledger's pages slowly. Dragons have profound respect for well-kept ledgers; it is practically a courtship gesture. “Dates. <i>Witnesses.</i> You've made my case for me — do you know how rare that is? Usually I must reconstruct an adventurer's year from tavern rumor.”` + (S.timing === 'bad' ? ` She glances at the burning window. “Though your timing remains… crisis-adjacent, which limits me today.”` : ``));
+    } else {
+      html +=
+        speech('You', `“This year I… warded the Caravan, which went very well. And the scrying budget is — smaller now? Substantially, I believe. The point is, my work has grown, and I'm asking for <b>${(CURRENT_PAY + gain).toLocaleString('en-US')}</b>.”`, 'you') +
+        speech('Guildmaster Vexahlia', `“The Caravan, yes — that I remember. The rest arrives in the shape of a shrug.” She taps the quill. “I <i>believe</i> you, roughly. But I must defend every raise before the Council with numbers, and you've handed me adjectives.”` + (S.timing === 'bad' ? ` A muffled explosion outside. “At a poor moment, no less.”` : ``));
+    }
+    html += banner(gain >= 10000 ? 'good' : 'info', `💎 The Value Frame lands: the ask is on the table at <b>+${gain.toLocaleString('en-US')} gold</b> of force${S.ledger ? '' : ' — roughly half of what the ledger version would carry'}${S.timing === 'bad' ? ', dulled further by the burning room' : ''}.`);
+    html += debrief(`Raises are approved by people who must justify them upward — your manager doesn't just decide, they <i>defend</i> the decision to a budget owner. The value frame works because it hands them the defense: concrete deliverables, quantified impact, and a note that your scope outgrew your title. “Pay for the job being done, at the market rate for that job” is an argument a budget committee can approve. Adjectives are not.`);
+    lesson('Frame a raise as value delivered + market rate for your grown scope — you\'re arming your manager to defend it upward.');
+  } else if (frame === 'need') {
+    gain = Math.round((CURRENT_PAY * 0.03 * timingMult) / 1000) * 1000;
+    html +=
+      speech('You', `“Rents in Emberhold have risen terribly. My tower has developed a leak. Familiar feed is not what it cost. I could truly use more gold.”`, 'you') +
+      speech('Guildmaster Vexahlia', `Her face softens — dragons are not heartless, merely well-audited. “I <i>am</i> sorry about the tower. Truly.” A pause. “But walk my ledger with me: I cannot write <i>‘his roof leaks’</i> in the justification column. The Council pays for the work, not the weather. Here—” she scratches a small figure, “—a hardship adjustment. It is what sympathy is worth in writing: something, and not much.”`) +
+      banner('info', `🥺 Sympathy secured: a small <b>+${gain.toLocaleString('en-US')}</b> of force — the ceiling for need-based asks.`) +
+      debrief(`The need frame is the most natural one to reach for and the weakest one to use: your expenses are real, but they're not the employer's pricing model. Compensation is priced on the value of the work and the market for your skills — a need-based ask caps out at whatever sympathy is worth, which is little, and it subtly reframes you as a cost to be managed rather than value to be retained. Same request, value frame, several times the result.`);
+    lesson('Employers price work, not needs — a need-based ask caps at sympathy, while the identical request framed as value pays multiples more.');
+  } else {
+    // bluff
+    S.rapport = Math.max(0, S.rapport - 2);
+    gain = 0;
+    html +=
+      speech('You', `You lean back with practiced carelessness. “The Silverquill Guild still writes to me, you know. Frequently. <i>Warmly.</i> It would be a shame if the gold question made their letters more… interesting.”`, 'you') +
+      speech('Guildmaster Vexahlia', `The reading glasses come off. This is never good. “Show me the scroll.” Silence. “You've named a rival's offer as your leverage. So: the scroll. The written terms. Show me.” More silence, in which you remember that you have, in fact, only a birthday card from their envoy. “Mm.” The glasses go back on. “Here is what you've taught me today, adventurer: your word requires auditing. That lesson will outlive this meeting.”`) +
+      banner('bad', `🃏 Bluff called. <b>No gain</b>, rapport badly wounded — and every future claim you make now gets audited.`) +
+      debrief(`Never invoke an offer you don't hold — and never invoke one you hold but wouldn't take. “Match this or I walk” invites exactly two responses: they match it (now you must be ready to stay on soured terms) or they say “safe travels” (now you must actually walk). A bluffed version adds the third and worst outcome: getting called, gaining nothing, and converting your credibility into a permanent audit flag. Real competing offers are excellent leverage — mentioned warmly, as in Quest I. Phantom ones are a self-inflicted wound.`);
+    lesson('Only mention a competing offer if it\'s real and you\'d truly take it — a called bluff costs credibility you can\'t buy back.');
+  }
+
+  renderScene(html, [{ label: '🏛️ The Guildmaster consults the coffers…', primary: true, go: () => act2Vault(gain) }]);
+}
+
+function act2Vault(gain) {
+  const halfNow = Math.round(gain / 2 / 500) * 500;
+  const remainder = gain - halfNow;
+
+  let opening;
+  if (gain > 0) {
+    S.offer = CURRENT_PAY + halfNow;
+    opening =
+      speech('Guildmaster Vexahlia', `She unrolls the budget scrolls and studies them, tapping a claw. “Here is my honest position. The Council has already sealed half the winter coffers. Today, I can grant you <b>${S.offer.toLocaleString('en-US')}</b>” — the quill hovers — “which is real gold, but I suspect not the whole of your hope. The question is what you do with an <i>almost</i>.”`);
+  } else {
+    S.offer = CURRENT_PAY;
+    opening =
+      speech('Guildmaster Vexahlia', `She folds her hands. “As matters stand, I'm granting nothing today — you've given me nothing I can carry to the Council.” A beat. The eyes over the reading glasses are, surprisingly, not unkind. “But the meeting isn't over unless you end it. The question is what you do with a <i>no</i>.”`);
+  }
+
+  renderScene(
+    `<div class="location">The Vault — The Almost</div>` +
+      opening +
+      speech(null, `Every raise conversation reaches this chamber: the partial yes, or the flat no. Most adventurers mumble thanks and retreat. This is precisely where the real ones are won.`),
+    [
+      {
+        label: `🗝️ “What would it take?” — turn the ${gain > 0 ? 'almost' : 'no'} into written criteria and a date`,
+        hint: 'Convert a feeling into a contract',
+        primary: true,
+        go: () => act2VaultResult('criteria', gain, halfNow, remainder),
+      },
+      {
+        label: '🧰 Pivot to the rest of the hoard — a Senior title and a training stipend',
+        hint: 'When gold is sealed, other ledgers stay open',
+        go: () => act2VaultResult('pivot', gain, halfNow, remainder),
+      },
+      {
+        label: '🐁 “Ah. Well. Maybe later, then.” — retreat with a vague hope',
+        hint: '“Later” is not a date',
+        go: () => act2VaultResult('meek', gain, halfNow, remainder),
+      },
+    ]
+  );
+}
+
+function act2VaultResult(move, gain, halfNow, remainder) {
+  let html = `<div class="location">The Vault — Resolution</div>`;
+
+  if (move === 'criteria') {
+    S.rapport = Math.min(5, S.rapport + 1);
+    const pactValue = gain > 0 ? Math.max(remainder, 3000) : 5000;
+    S.perks.push({ icon: '📜', name: 'The Deeds Pact', value: pactValue, note: 'written raise criteria + review date' });
+    html +=
+      speech('You', `“Then let me ask the only question that matters: <b>what would it take?</b> Name the deeds, name the standard — and name the date we reopen this scroll. I'll have it in writing, and I'll hold up my half.”`, 'you') +
+      speech('Guildmaster Vexahlia', `For the first time tonight, she looks genuinely pleased — the look of a dragon meeting a fellow keeper of ledgers. “<i>That</i> is the question, yes.” The quill moves with purpose. “Criteria: lead the Spring Convoy warding, deliver the new scrying array under budget. Date: first thaw, before the Council. Standard: ${gain > 0 ? `the remainder of your ask, in full` : `a proper raise, market-checked`}. Signed, sealed, witnessed by the clerk. Miss it and we speak plainly about why; meet it and the gold moves <i>without another battle</i>.”`) +
+      banner('good', `🗝️ <b>The Deeds Pact</b> secured (+${pactValue.toLocaleString('en-US')} gold value): written criteria, a real date, and a raise that now defends itself.`) +
+      debrief(`“What would it take?” is the single best sentence for a stalled raise. It converts a vague deferral into a concrete contract: specific criteria, a specific date, ideally in writing (a follow-up email — “capturing what we agreed” — counts). It also quietly flips the dynamic: your manager just co-signed the case they'll later have to defend. A “maybe later” with criteria and a date is a plan; a “maybe later” without them is a polite goodbye. Always leave with the date.`);
+    lesson('When a raise stalls, ask “what would it take?” — then get the criteria and the review date in writing. Never leave with a vague “later.”');
+  } else if (move === 'pivot') {
+    S.perks.push({ icon: '🎖️', name: 'Senior Arcane Engineer (title)', value: 4000, note: 'seniority — compounds into every future negotiation' });
+    S.perks.push({ icon: '📚', name: 'Grimoire Stipend (training)', value: 3000, note: 'annual conference & training budget' });
+    html +=
+      speech('You', `“Then let's spend from the ledgers that <i>aren't</i> sealed. The scope I carry is a Senior's scope — let the title say so. And a grimoire stipend: the Guild profits every time I learn something expensive.”`, 'you') +
+      speech('Guildmaster Vexahlia', `Her eyebrows rise, then settle into approval. “The title costs me a line of ink and is frankly overdue. The stipend comes from the Lore budget, which the Council” — a conspiratorial pause — “never seals, because they never remember it exists. Done, and done.”`) +
+      banner('good', `🎖️ <b>Senior title</b> + 📚 <b>Grimoire Stipend</b> secured (+7,000 gold value). The gold ledger was sealed; two others were wide open.`) +
+      debrief(`When base salary is genuinely frozen — budget locks, comp bands, hiring freezes — the negotiation isn't over, it has changed ledgers. Titles, training budgets, scope, flexibility, and one-time bonuses all live in different pools with different approvers. The title deserves special note: it looks free, but it re-anchors every future negotiation — your next raise, and especially your next job, price against it. A senior title today is compound interest on every paycheck after it.`);
+    lesson('When base pay is frozen, change ledgers: titles, training, scope, and bonuses have different budgets — and a title re-anchors every future negotiation.');
+  } else {
+    // meek
+    html +=
+      speech('You', `“Ah. Well. Maybe later, then,” you say, already halfway into a bow, already reaching for the door.`, 'you') +
+      speech('Guildmaster Vexahlia', `“Later,” she agrees pleasantly, and the word evaporates even as it's spoken — no date, no deed, no witness. By spring, this meeting will exist only in your memory, and you already know how reliable <i>that</i> ledger is.`) +
+      banner('bad', `🐁 You retreated with ${gain > 0 ? 'the partial raise and' : ''} a “later” worth exactly nothing. Undated hopes don't compound.`) +
+      debrief(`“Maybe later” feels like a partial victory in the room and becomes nothing outside it: no criteria, no date, no record — and next quarter has its own fires. The uncomfortable truth is that a deferred raise you don't pin down simply doesn't happen; the queue of people asking again is short, and organizations quietly rely on that. If you take away one mechanical habit from this whole quest: never end a comp conversation without a date on the calendar and a sentence in writing.`);
+    lesson('“Maybe later” without a date and written criteria is a no that spares your feelings — always pin the follow-up down.');
+  }
+
+  renderScene(html, [{ label: '📜 To the reckoning', primary: true, go: victory2 }]);
+}
+
+function victory2() {
+  const perkTotal = S.perks.reduce((sum, p) => sum + p.value, 0);
+  const total = S.offer + perkTotal;
+  const delta = S.offer - CURRENT_PAY;
+
+  let rank, rankNote;
+  if (total >= 122500) { rank = 'S'; rankNote = 'The Council approves without a fight. The clerk asks for your notes.'; }
+  else if (total >= 119000) { rank = 'A'; rankNote = 'A rich year\'s harvest, well argued.'; }
+  else if (total >= 115500) { rank = 'B'; rankNote = 'Real progress — with gold left sleeping in the vault.'; }
+  else if (total >= 111000) { rank = 'C'; rankNote = 'A step. The vault door barely noticed you.'; }
+  else { rank = 'D'; rankNote = 'The coffers rest undisturbed. The Guildmaster files your visit under “weather.”'; }
+  saveBest(2, rank, total);
+
+  const perkRows = S.perks
+    .map((p) => `<tr><td>${p.icon} ${p.name} <span style="color:var(--text-dim)">(${p.note})</span></td><td>+${p.value.toLocaleString('en-US')}</td></tr>`)
+    .join('');
+
+  const lessonItems = S.lessons.map((l) => `<li>${l}</li>`).join('');
+
+  renderScene(
+    `<div class="location">Quest II — The Reckoning</div>` +
+      `<div class="rank">🏆 Rank ${rank}</div>` +
+      `<div class="rank-note">${rankNote}</div>` +
+      speech(null, `The audience ends. Guildmaster Vexahlia returns to her scrolls — but as you reach the door: <b>“Adventurer. Same time next year. Bring the ledger.”</b>`) +
+      `<table class="loot-table">
+        <tr><td>💰 Gold before the audience</td><td>${CURRENT_PAY.toLocaleString('en-US')}</td></tr>
+        <tr><td>💰 Gold after (annual)</td><td>${S.offer.toLocaleString('en-US')}</td></tr>
+        <tr><td style="color:var(--text-dim)">…raise won in the room</td><td class="${delta > 0 ? 'delta-up' : 'delta-down'}">+${delta.toLocaleString('en-US')}</td></tr>
+        ${perkRows || `<tr><td style="color:var(--text-dim)">— nothing secured beyond the gold —</td><td>+0</td></tr>`}
+        <tr class="total"><td>Total value claimed</td><td>${total.toLocaleString('en-US')}</td></tr>
+      </table>` +
+      banner('info', `For scale: the meekest path through this audience leaves with <b>${CURRENT_PAY.toLocaleString('en-US')}</b> and a vague “later.” The best clears <b>~123,500</b> in salary, sealed commitments, and titles. The difference was a ledger, a calendar, and four sentences.`) +
+      `<div class="debrief"><div class="debrief-label">📜 Final debrief — what you take back to the real world</div>
+        <ul class="lessons">${lessonItems || '<li>The vault opens for the prepared. Return with a ledger.</li>'}</ul>
+        <p style="margin-top:10px">Raises compound harder than almost any other money decision you make: this year's base is next year's baseline, and your next job offers price against it. An hour of preparation — a brag document, a calendar check, a value frame, and “what would it take?” — repeats its payment every year you work.</p>
+      </div>`,
+    [
+      { label: '🔄 Replay Quest II — argue it differently', primary: true, go: act2Intro },
+      { label: '⚔️ Replay Quest I — The Dragon\'s Hoard', go: intro },
+      { label: '🏰 Return to the title screen', go: titleScreen },
+    ]
+  );
+}
+
+/* ── The Sage's Codex: the cheat sheet, no dragons ── */
+
+function codex() {
+  S = null;
+  hud.classList.add('hidden');
+  const entry = (icon, title, body) =>
+    `<div class="speech"><div class="speaker">${icon} ${title}</div><div>${body}</div></div>`;
+  renderScene(
+    `<div class="location">The Sage's Codex — every lesson, plain voice</div>` +
+      speech(null, `Everything the quests teach, with the dragons removed. Read it the night before a real negotiation.`) +
+      entry('🔮', 'Do the research first', `Before any comp conversation, know the market range for the role, level, and region (Levels.fyi, Glassdoor, posted salary bands). The information gap is the employer's main advantage; fifteen minutes closes most of it.`) +
+      entry('📜', 'Build a BATNA', `Your leverage is your best alternative if this deal dies — ideally a real competing offer, but even active interviews change how you negotiate. Strong alternatives raise both your ask and your calm.`) +
+      entry('🔥', 'Anchor deliberately', `First numbers pull final outcomes toward them. If you know the market, open high-but-defensible. If you don't, never guess — deflect, or ask “what's the budgeted range for this role?” (increasingly a question employers must answer).`) +
+      entry('🧘', 'Hold the silence', `After they name a number, pause. Don't praise the offer, don't nervously ask if it's negotiable — say “thank you, let me consider the full picture,” and let the quiet work. Flexibility often surfaces unprompted.`) +
+      entry('🤝', 'Counter warm-but-firm', `“I'm excited about this role, and — for me to say yes — the number needs to reflect the market, which I'm seeing at X.” Enthusiasm plus evidence beats aggression (invites retaliation) and meekness (donates the room they built in). Politely countering essentially never costs a real offer.`) +
+      entry('⏳', 'Defuse manufactured urgency', `“This offer expires tomorrow” is almost always a pressure tactic. Calmly ask for a few days to review the full package; real offers survive that request. If your heart rate is making the decision, slow down.`) +
+      entry('💎', 'Negotiate the package', `Base salary is one lever with the tightest constraints. Signing bonus, equity, PTO, remote flexibility, title, and training budget sit in different budgets with different approvers — when one lever jams, pull another. Compare offers on total value.`) +
+      entry('📖', 'Keep a brag document', `Five minutes a week: what you did, with numbers (money saved, time cut, people trained). Raise decisions are made on what's legible at review time, and everyone's memory — including yours — is recency-biased.`) +
+      entry('🕰️', 'Time the ask', `Raises come from budget cycles that lock before review season. Ask after a visible win, before the money is allocated, in a scheduled meeting with a stated agenda. Never ambush; ambushed managers can only say the safe word.`) +
+      entry('⚖️', 'Frame value, not need', `Employers price the work and the market, not your rent. “Here's what I delivered, quantified; here's the market for my expanded scope; here's my ask” is an argument your manager can defend upward. Need-based asks cap at sympathy.`) +
+      entry('🃏', 'Never bluff an offer', `Mention a competing offer only if it's real and you'd genuinely take it. “Match or I walk” has two honest endings — they match (be ready to stay) or you walk (be ready to go). A called bluff gains nothing and permanently discounts your word.`) +
+      entry('🗝️', 'Turn “no” into criteria', `When a raise stalls: “What would it take?” Get specific criteria and a review date, then confirm in writing. A deferral with a date is a plan; a deferral without one is a polite no. Never leave the room without the date.`),
+    [{ label: '🏰 Back to the title screen', primary: true, go: titleScreen }]
   );
 }
 

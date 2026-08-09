@@ -17,10 +17,25 @@ debrief is where the training lands.
 No build, no dependencies. Either:
 
 - Open `index.html` in any browser, or
-- Serve the folder: `python3 -m http.server` → http://localhost:8000
+- Serve the folder: `python3 -m http.server` → http://localhost:8000, or
+- **GitHub Pages**: a deploy workflow is included (`.github/workflows/deploy.yml`) — it
+  publishes the site automatically on every push to `main`.
 
-One run takes ~5 minutes. Different choices, different gold — the worst path signs at
-**85,000**, the best clears **~153,000**. Same candidate, same guild, same evening.
+Each quest takes ~5 minutes, and your best rank per quest is saved locally.
+
+### Quest I — The Dragon's Hoard
+Negotiate a new job offer. The worst path signs at **85,000**, the best clears **~153,000**.
+Same candidate, same guild, same evening.
+
+### Quest II — The Raise
+One year later: ask for more gold at the guild you already serve. Teaches the brag document
+(the Deeds Ledger), timing the ask to budget cycles, value framing vs. need framing, why you
+never bluff a competing offer, and how "what would it take?" turns a stalled raise into
+written criteria with a date.
+
+### 📚 The Sage's Codex
+A plain-language cheat sheet of every principle both quests teach — read it the night
+before a real negotiation.
 
 ## 🗺️ Fantasy → real-world mappings
 
@@ -38,11 +53,13 @@ One run takes ~5 minutes. Different choices, different gold — the worst path s
 
 - `index.html` — shell + HUD
 - `style.css` — dark-fantasy theme, parchment debriefs, the trembling blurt buttons
-- `game.js` — scene-based state machine; all encounter logic, outcome math, and debrief text
+- `game.js` — scene-based state machine; both quests, the codex, outcome math, and debrief text
+- `.github/workflows/deploy.yml` — GitHub Pages deployment on push to `main`
 
 State tracked per run: current offer, rapport with the Guildmaster (♥), market lore,
-the Escape Scroll, patience-check result, chosen stance, and claimed perks — all of which
-feed the final loot table and rank (D through S).
+the Escape Scroll, the Deeds Ledger, timing, patience-check result, chosen stance/frame,
+and claimed perks — all of which feed the final loot table and rank (D through S). Best
+scores persist in `localStorage`.
 
 ## 📚 The real ideas underneath
 
